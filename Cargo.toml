@@ -27,6 +27,8 @@ keywords = [
     "datafusion",
     "functions-extra",
 ]
+documentation = "https://docs.rs/datafusion-extra-functions/"
+homepage = "https://github.com/datafusion-contrib/datafusion-extra-functions/"
 repository = "https://github.com/datafusion-contrib/datafusion-extra-functions/"
 
 [dependencies]
