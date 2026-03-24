@@ -93,7 +93,7 @@ impl logical_expr::AggregateUDFImpl for MaxByFunction {
     fn simplify(&self) -> Option<logical_expr::function::AggregateFunctionSimplification> {
         let null_first = self.null_first;
         let simplify = move |mut aggr_func: logical_expr::expr::AggregateFunction,
-                             _: &dyn logical_expr::simplify::SimplifyInfo| {
+                             _: &logical_expr::simplify::SimplifyContext| {
             let mut order_by = aggr_func.params.order_by;
             let (second_arg, first_arg) = (
                 aggr_func.params.args.remove(1),
@@ -192,7 +192,7 @@ impl logical_expr::AggregateUDFImpl for MinByFunction {
     fn simplify(&self) -> Option<logical_expr::function::AggregateFunctionSimplification> {
         let null_first = self.null_first;
         let simplify = move |mut aggr_func: logical_expr::expr::AggregateFunction,
-                             _: &dyn logical_expr::simplify::SimplifyInfo| {
+                             _: &logical_expr::simplify::SimplifyContext| {
             let mut order_by = aggr_func.params.order_by;
             let (second_arg, first_arg) = (
                 aggr_func.params.args.remove(1),

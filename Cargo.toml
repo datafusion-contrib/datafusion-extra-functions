@@ -17,7 +17,7 @@
 
 [package]
 name = "datafusion-extra-functions"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Extra Functions for DataFusion"
 readme = "README.md"
@@ -37,12 +37,12 @@ paste = "1.0"
 
 [dependencies.datafusion]
 default-features = false
-version = "52.0"
+version = "53.0"
 
 [dev-dependencies]
 criterion = "0.8"
 rand = "0.10"
-tokio = "1.48"
+tokio = "1.50"
 
 [dev-dependencies.arrow]
 default-features = false
@@ -54,13 +54,13 @@ version = "58.0"
 [dev-dependencies.datafusion]
 default-features = false
 features = ["sql"]
-version = "52.0"
+version = "53.0"
 
 [dev-dependencies.insta]
 features = [
     "yaml",
 ]
-version = "1.43"
+version = "1.46"
 
 [[bench]]
 name = "mode"
