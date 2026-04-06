@@ -42,14 +42,14 @@ version = "53.0"
 [dev-dependencies]
 criterion = "0.8"
 rand = "0.10"
-tokio = "1.50"
+tokio = "1.51"
 
 [dev-dependencies.arrow]
 default-features = false
 features = [
     "test_utils",
 ]
-version = "58.0"
+version = "58.1"
 
 [dev-dependencies.datafusion]
 default-features = false
@@ -60,7 +60,7 @@ version = "53.0"
 features = [
     "yaml",
 ]
-version = "1.46"
+version = "1.47"
 
 [[bench]]
 name = "mode"
