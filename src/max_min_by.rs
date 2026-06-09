@@ -1,7 +1,7 @@
 use datafusion::logical_expr::AggregateUDFImpl;
 use datafusion::{arrow, common, error, functions_aggregate, logical_expr};
+use std::fmt;
 use std::ops::Deref;
-use std::{any, fmt};
 
 make_udaf_expr_and_func!(
     MaxByFunction,
@@ -57,10 +57,6 @@ fn get_min_max_by_result_type(
 }
 
 impl logical_expr::AggregateUDFImpl for MaxByFunction {
-    fn as_any(&self) -> &dyn any::Any {
-        self
-    }
-
     fn name(&self) -> &str {
         "max_by"
     }
@@ -156,10 +152,6 @@ impl MinByFunction {
 }
 
 impl logical_expr::AggregateUDFImpl for MinByFunction {
-    fn as_any(&self) -> &dyn any::Any {
-        self
-    }
-
     fn name(&self) -> &str {
         "min_by"
     }

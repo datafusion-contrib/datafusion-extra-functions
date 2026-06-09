@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use datafusion::{arrow, common as df_common, error, logical_expr};
-use std::{any, fmt};
-
 use crate::common;
+
+use datafusion::{arrow, common as df_common, error, logical_expr};
+use std::fmt;
 
 make_udaf_expr_and_func!(
     ModeFunction,
@@ -60,10 +60,6 @@ impl ModeFunction {
 }
 
 impl logical_expr::AggregateUDFImpl for ModeFunction {
-    fn as_any(&self) -> &dyn any::Any {
-        self
-    }
-
     fn name(&self) -> &str {
         "mode"
     }

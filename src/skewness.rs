@@ -18,7 +18,7 @@
 use datafusion::arrow::array::AsArray;
 use datafusion::{arrow, logical_expr, scalar};
 use std::ops::{Div, Mul, Sub};
-use std::{any, fmt, mem};
+use std::{fmt, mem};
 
 make_udaf_expr_and_func!(
     SkewnessFunc,
@@ -61,9 +61,6 @@ impl SkewnessFunc {
 }
 
 impl logical_expr::AggregateUDFImpl for SkewnessFunc {
-    fn as_any(&self) -> &dyn any::Any {
-        self
-    }
     fn name(&self) -> &str {
         &self.name
     }
