@@ -20,7 +20,7 @@
 
 use datafusion::arrow::array::{Float64Array, UInt64Array};
 use datafusion::{arrow, common, error, logical_expr, scalar};
-use std::{any, fmt, mem};
+use std::{fmt, mem};
 
 make_udaf_expr_and_func!(
     KurtosisPopFunction,
@@ -61,10 +61,6 @@ impl KurtosisPopFunction {
 }
 
 impl logical_expr::AggregateUDFImpl for KurtosisPopFunction {
-    fn as_any(&self) -> &dyn any::Any {
-        self
-    }
-
     fn name(&self) -> &str {
         "kurtosis_pop"
     }
