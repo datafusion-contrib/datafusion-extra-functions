@@ -37,7 +37,7 @@ paste = "1.0"
 
 [dependencies.datafusion]
 default-features = false
-version = "53.0"
+version = "54.0"
 
 [dev-dependencies]
 criterion = "0.8"
@@ -54,7 +54,7 @@ version = "58.1"
 [dev-dependencies.datafusion]
 default-features = false
 features = ["sql"]
-version = "53.0"
+version = "54.0"
 
 [dev-dependencies.insta]
 features = [
