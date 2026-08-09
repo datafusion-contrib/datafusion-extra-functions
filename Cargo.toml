@@ -37,30 +37,30 @@ paste = "1.0"
 
 [dependencies.datafusion]
 default-features = false
-version = "54.0"
+version = "54.1"
 
 [dev-dependencies]
 criterion = "0.8"
 rand = "0.10"
-tokio = "1.52"
+tokio = "1.53"
 
 [dev-dependencies.arrow]
 default-features = false
 features = [
     "test_utils",
 ]
-version = "59.0"
+version = "59.2"
 
 [dev-dependencies.datafusion]
 default-features = false
 features = ["sql"]
-version = "54.0"
+version = "54.1"
 
 [dev-dependencies.insta]
 features = [
     "yaml",
 ]
-version = "1.47"
+version = "1.48"
 
 [[bench]]
 name = "mode"
