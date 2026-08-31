@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use datafusion::common::utils::SingleRowListArrayBuilder;
 use datafusion::physical_expr::aggregate::utils::Hashable;
 use datafusion::{arrow, common, error, logical_expr, scalar};
-use std::{cmp, collections, fmt, hash, mem};
+use std::{cmp, collections, fmt, hash, mem, sync};
 
 #[derive(fmt::Debug)]
 pub struct PrimitiveModeAccumulator<T>
@@ -62,48 +63,28 @@ where
     }
 
     fn state(&mut self) -> error::Result<Vec<scalar::ScalarValue>> {
-        let values: Vec<scalar::ScalarValue> = self
-            .value_counts
-            .keys()
-            .map(|key| scalar::ScalarValue::new_primitive::<T>(Some(*key), &self.data_type))
-            .collect::<error::Result<Vec<_>>>()?;
-
-        let frequencies: Vec<scalar::ScalarValue> = self
-            .value_counts
-            .values()
-            .map(|count| scalar::ScalarValue::from(*count))
-            .collect();
-
-        let values_scalar =
-            scalar::ScalarValue::new_list_nullable(&values, &self.data_type.clone());
-        let frequencies_scalar = scalar::ScalarValue::new_list_nullable(
-            &frequencies,
-            &arrow::datatypes::DataType::Int64,
-        );
+        let values =
+            arrow::array::PrimitiveArray::<T>::from_iter_values(self.value_counts.keys().copied())
+                .with_data_type(self.data_type.clone());
+        let counts =
+            arrow::array::Int64Array::from_iter_values(self.value_counts.values().copied());
 
         Ok(vec![
-            scalar::ScalarValue::List(values_scalar),
-            scalar::ScalarValue::List(frequencies_scalar),
+            SingleRowListArrayBuilder::new(sync::Arc::new(values)).build_list_scalar(),
+            SingleRowListArrayBuilder::new(sync::Arc::new(counts)).build_list_scalar(),
         ])
     }
 
     fn merge_batch(&mut self, states: &[arrow::array::ArrayRef]) -> error::Result<()> {
-        if states.is_empty() {
-            return Ok(());
-        }
-
-        let values_array = common::cast::as_primitive_array::<T>(&states[0])?;
-        let counts_array =
-            common::cast::as_primitive_array::<arrow::datatypes::Int64Type>(&states[1])?;
-
-        for i in 0..values_array.len() {
-            let value = values_array.value(i);
-            let count = counts_array.value(i);
-            let entry = self.value_counts.entry(value).or_insert(0);
-            *entry += count;
-        }
-
-        Ok(())
+        super::for_each_state_row(states, |values, counts| {
+            let values = common::cast::as_primitive_array::<T>(values)?;
+            for (value, count) in values.iter().zip(counts.values()) {
+                if let Some(value) = value {
+                    *self.value_counts.entry(value).or_insert(0) += *count;
+                }
+            }
+            Ok(())
+        })
     }
 
     fn evaluate(&mut self) -> error::Result<scalar::ScalarValue> {
@@ -117,8 +98,9 @@ where
                     max_count = count;
                 }
                 cmp::Ordering::Equal => {
+                    // On ties the smallest value wins, matching PostgreSQL's mode().
                     max_value = match max_value {
-                        Some(ref current_max_value) if value > current_max_value => Some(*value),
+                        Some(ref current_max_value) if value < current_max_value => Some(*value),
                         Some(ref current_max_value) => Some(*current_max_value),
                         None => Some(*value),
                     };
@@ -127,10 +109,7 @@ where
             }
         });
 
-        match max_value {
-            Some(val) => scalar::ScalarValue::new_primitive::<T>(Some(val), &self.data_type),
-            None => scalar::ScalarValue::new_primitive::<T>(None, &self.data_type),
-        }
+        scalar::ScalarValue::new_primitive::<T>(max_value, &self.data_type)
     }
 
     fn size(&self) -> usize {
@@ -181,50 +160,29 @@ where
     }
 
     fn state(&mut self) -> error::Result<Vec<scalar::ScalarValue>> {
-        let values: Vec<scalar::ScalarValue> = self
-            .value_counts
-            .keys()
-            .map(|key| scalar::ScalarValue::new_primitive::<T>(Some(key.0), &self.data_type))
-            .collect::<error::Result<Vec<_>>>()?;
-
-        let frequencies: Vec<scalar::ScalarValue> = self
-            .value_counts
-            .values()
-            .map(|count| scalar::ScalarValue::from(*count))
-            .collect();
-
-        let values_scalar =
-            scalar::ScalarValue::new_list_nullable(&values, &self.data_type.clone());
-        let frequencies_scalar = scalar::ScalarValue::new_list_nullable(
-            &frequencies,
-            &arrow::datatypes::DataType::Int64,
-        );
+        let values = arrow::array::PrimitiveArray::<T>::from_iter_values(
+            self.value_counts.keys().map(|key| key.0),
+        )
+        .with_data_type(self.data_type.clone());
+        let counts =
+            arrow::array::Int64Array::from_iter_values(self.value_counts.values().copied());
 
         Ok(vec![
-            scalar::ScalarValue::List(values_scalar),
-            scalar::ScalarValue::List(frequencies_scalar),
+            SingleRowListArrayBuilder::new(sync::Arc::new(values)).build_list_scalar(),
+            SingleRowListArrayBuilder::new(sync::Arc::new(counts)).build_list_scalar(),
         ])
     }
 
     fn merge_batch(&mut self, states: &[arrow::array::ArrayRef]) -> error::Result<()> {
-        if states.is_empty() {
-            return Ok(());
-        }
-
-        let values_array = common::cast::as_primitive_array::<T>(&states[0])?;
-        let counts_array =
-            common::cast::as_primitive_array::<arrow::datatypes::Int64Type>(&states[1])?;
-
-        for i in 0..values_array.len() {
-            let count = counts_array.value(i);
-            let entry = self
-                .value_counts
-                .entry(Hashable(values_array.value(i)))
-                .or_insert(0);
-            *entry += count;
-        }
-
-        Ok(())
+        super::for_each_state_row(states, |values, counts| {
+            let values = common::cast::as_primitive_array::<T>(values)?;
+            for (value, count) in values.iter().zip(counts.values()) {
+                if let Some(value) = value {
+                    *self.value_counts.entry(Hashable(value)).or_insert(0) += *count;
+                }
+            }
+            Ok(())
+        })
     }
 
     fn evaluate(&mut self) -> error::Result<scalar::ScalarValue> {
@@ -238,8 +196,9 @@ where
                     max_count = count;
                 }
                 cmp::Ordering::Equal => {
+                    // On ties the smallest value wins, matching PostgreSQL's mode().
                     max_value = match max_value {
-                        Some(current_max_value) if value.0 > current_max_value => Some(value.0),
+                        Some(current_max_value) if value.0 < current_max_value => Some(value.0),
                         Some(current_max_value) => Some(current_max_value),
                         None => Some(value.0),
                     };
@@ -248,10 +207,7 @@ where
             }
         });
 
-        match max_value {
-            Some(val) => scalar::ScalarValue::new_primitive::<T>(Some(val), &self.data_type),
-            None => scalar::ScalarValue::new_primitive::<T>(None, &self.data_type),
-        }
+        scalar::ScalarValue::new_primitive::<T>(max_value, &self.data_type)
     }
 
     fn size(&self) -> usize {
@@ -325,7 +281,7 @@ mod tests {
         assert_eq!(
             result,
             scalar::ScalarValue::new_primitive::<arrow::datatypes::Int64Type>(
-                Some(3),
+                Some(2),
                 &arrow::datatypes::DataType::Int64
             )?
         );
@@ -413,7 +369,7 @@ mod tests {
         assert_eq!(
             result,
             scalar::ScalarValue::new_primitive::<arrow::datatypes::Float64Type>(
-                Some(3.0),
+                Some(2.0),
                 &arrow::datatypes::DataType::Float64
             )?
         );
@@ -509,7 +465,7 @@ mod tests {
         assert_eq!(
             result,
             scalar::ScalarValue::new_primitive::<arrow::datatypes::Date64Type>(
-                Some(1609632000000),
+                Some(1609545600000),
                 &arrow::datatypes::DataType::Date64
             )?
         );
@@ -607,7 +563,7 @@ mod tests {
         assert_eq!(
             result,
             scalar::ScalarValue::new_primitive::<arrow::datatypes::Time64MicrosecondType>(
-                Some(10800000000),
+                Some(7200000000),
                 &arrow::datatypes::DataType::Time64(arrow::datatypes::TimeUnit::Microsecond)
             )?
         );

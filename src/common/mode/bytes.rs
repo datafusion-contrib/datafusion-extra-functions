@@ -16,8 +16,9 @@
 // under the License.
 
 use datafusion::arrow::array::AsArray;
+use datafusion::common::utils::SingleRowListArrayBuilder;
 use datafusion::{arrow, common, error, logical_expr, scalar};
-use std::{collections, mem};
+use std::{collections, mem, sync};
 
 #[derive(Debug)]
 pub struct BytesModeAccumulator {
@@ -38,11 +39,12 @@ impl BytesModeAccumulator {
         V: arrow::array::ArrayAccessor<Item = &'a str>,
     {
         for value in arrow::array::ArrayIter::new(array).flatten() {
-            let key = value;
-            if let Some(count) = self.value_counts.get_mut(key) {
+            // get_mut before insert avoids allocating a String for keys
+            // that are already present.
+            if let Some(count) = self.value_counts.get_mut(value) {
                 *count += 1;
             } else {
-                self.value_counts.insert(key.to_string(), 1);
+                self.value_counts.insert(value.to_string(), 1);
             }
         }
     }
@@ -69,81 +71,42 @@ impl logical_expr::Accumulator for BytesModeAccumulator {
     }
 
     fn state(&mut self) -> error::Result<Vec<scalar::ScalarValue>> {
-        let values: Vec<scalar::ScalarValue> = self
-            .value_counts
-            .keys()
-            .map(|key| scalar::ScalarValue::Utf8(Some(key.to_string())))
-            .collect();
-
-        let frequencies: Vec<scalar::ScalarValue> = self
-            .value_counts
-            .values()
-            .map(|&count| scalar::ScalarValue::Int64(Some(count)))
-            .collect();
-
-        let values_scalar =
-            scalar::ScalarValue::new_list_nullable(&values, &arrow::datatypes::DataType::Utf8);
-        let frequencies_scalar = scalar::ScalarValue::new_list_nullable(
-            &frequencies,
-            &arrow::datatypes::DataType::Int64,
-        );
+        let values = arrow::array::StringArray::from_iter_values(self.value_counts.keys());
+        let counts =
+            arrow::array::Int64Array::from_iter_values(self.value_counts.values().copied());
 
         Ok(vec![
-            scalar::ScalarValue::List(values_scalar),
-            scalar::ScalarValue::List(frequencies_scalar),
+            SingleRowListArrayBuilder::new(sync::Arc::new(values)).build_list_scalar(),
+            SingleRowListArrayBuilder::new(sync::Arc::new(counts)).build_list_scalar(),
         ])
     }
 
     fn merge_batch(&mut self, states: &[arrow::array::ArrayRef]) -> error::Result<()> {
-        if states.is_empty() {
-            return Ok(());
-        }
-
-        let values_array = arrow::array::as_string_array(&states[0]);
-        let counts_array =
-            common::cast::as_primitive_array::<arrow::datatypes::Int64Type>(&states[1])?;
-
-        for (i, value_option) in values_array.iter().enumerate() {
-            if let Some(value) = value_option {
-                let count = counts_array.value(i);
-                let entry = self.value_counts.entry(value.to_string()).or_insert(0);
-                *entry += count;
+        super::for_each_state_row(states, |values, counts| {
+            let values = common::cast::as_string_array(values)?;
+            for (value, count) in values.iter().zip(counts.values()) {
+                if let Some(value) = value {
+                    *self.value_counts.entry(value.to_string()).or_insert(0) += *count;
+                }
             }
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
     fn evaluate(&mut self) -> error::Result<scalar::ScalarValue> {
-        if self.value_counts.is_empty() {
-            return match &self.data_type {
-                arrow::datatypes::DataType::Utf8View => Ok(scalar::ScalarValue::Utf8View(None)),
-                _ => Ok(scalar::ScalarValue::Utf8(None)),
-            };
-        }
-
         let mode = self
             .value_counts
             .iter()
             .max_by(|a, b| {
-                // First compare counts
-                a.1.cmp(b.1)
-                    // If counts are equal, compare keys in reverse order to get the maximum string
-                    .then_with(|| b.0.cmp(a.0))
+                // Highest count wins; on ties the smallest value wins,
+                // matching PostgreSQL's mode() ordered-set aggregate.
+                a.1.cmp(b.1).then_with(|| b.0.cmp(a.0))
             })
             .map(|(value, _)| value.to_string());
 
-        match mode {
-            Some(result) => match &self.data_type {
-                arrow::datatypes::DataType::Utf8View => {
-                    Ok(scalar::ScalarValue::Utf8View(Some(result)))
-                }
-                _ => Ok(scalar::ScalarValue::Utf8(Some(result))),
-            },
-            None => match &self.data_type {
-                arrow::datatypes::DataType::Utf8View => Ok(scalar::ScalarValue::Utf8View(None)),
-                _ => Ok(scalar::ScalarValue::Utf8(None)),
-            },
+        match &self.data_type {
+            arrow::datatypes::DataType::Utf8View => Ok(scalar::ScalarValue::Utf8View(mode)),
+            _ => Ok(scalar::ScalarValue::Utf8(mode)),
         }
     }
 
