@@ -1,0 +1,88 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+statement ok
+CREATE TABLE test_table (
+    utf8_col VARCHAR,
+    int64_col BIGINT,
+    float64_col DOUBLE,
+    date64_col DATE,
+    time64_col TIME
+) AS VALUES
+    ('apple', 1, 1.0, DATE '2021-01-01', TIME '01:00:00'),
+    ('banana', 2, 2.0, DATE '2021-01-02', TIME '02:00:00'),
+    ('apple', 2, 2.0, DATE '2021-01-02', TIME '02:00:00'),
+    ('orange', 3, 3.0, DATE '2021-01-03', TIME '03:00:00'),
+    ('banana', 3, 3.0, DATE '2021-01-03', TIME '03:00:00'),
+    ('apple', 3, 3.0, DATE '2021-01-03', TIME '03:00:00'),
+    (NULL, NULL, NULL, NULL, NULL);
+
+query T
+SELECT mode(utf8_col) FROM test_table
+----
+apple
+
+query I
+SELECT mode(int64_col) FROM test_table
+----
+3
+
+query R
+SELECT mode(float64_col) FROM test_table
+----
+3
+
+query D
+SELECT mode(date64_col) FROM test_table
+----
+2021-01-03
+
+query D
+SELECT mode(time64_col) FROM test_table
+----
+03:00:00
+
+# On equal frequencies the smallest value wins, matching PostgreSQL's mode().
+query I
+SELECT mode(v) FROM (VALUES (1), (2), (2), (3), (3)) AS t(v)
+----
+2
+
+query T
+SELECT mode(v) FROM (VALUES ('banana'), ('banana'), ('apple'), ('apple')) AS t(v)
+----
+apple
+
+# LargeUtf8 is not supported and must fail cleanly instead of panicking.
+query error DataFusion error: This feature is not implemented: Unsupported data type: LargeUtf8 for mode function
+SELECT mode(arrow_cast(utf8_col, 'LargeUtf8')) FROM test_table
+
+# MODE must produce the same results when many partitions feed the final
+# merge: partial state rows are summed, not replaced.
+statement ok
+SET datafusion.execution.target_partitions = 10;
+
+query ITR
+SELECT int64_col, mode(utf8_col) AS mode_utf8, mode(float64_col) AS mode_float64
+FROM test_table
+GROUP BY int64_col
+ORDER BY int64_col
+----
+1 apple 1
+2 apple 2
+3 apple 3
+NULL NULL NULL
