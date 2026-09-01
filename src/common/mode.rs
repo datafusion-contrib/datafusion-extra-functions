@@ -21,3 +21,28 @@ mod native;
 pub use bytes::BytesModeAccumulator;
 pub use native::FloatModeAccumulator;
 pub use native::PrimitiveModeAccumulator;
+
+use datafusion::{arrow, common, error};
+
+/// Unwraps the two list-typed state columns (`values`, `frequencies`) row by
+/// row and passes each row's inner arrays to `f`.
+pub(crate) fn for_each_state_row(
+    states: &[arrow::array::ArrayRef],
+    mut f: impl FnMut(&arrow::array::ArrayRef, &arrow::array::Int64Array) -> error::Result<()>,
+) -> error::Result<()> {
+    if states.is_empty() {
+        return Ok(());
+    }
+
+    let values = common::cast::as_list_array(&states[0])?;
+    let counts = common::cast::as_list_array(&states[1])?;
+
+    for (values, counts) in values.iter().zip(counts.iter()) {
+        if let (Some(values), Some(counts)) = (values, counts) {
+            let counts = common::cast::as_primitive_array::<arrow::datatypes::Int64Type>(&counts)?;
+            f(&values, counts)?;
+        }
+    }
+
+    Ok(())
+}

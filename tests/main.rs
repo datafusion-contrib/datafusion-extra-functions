@@ -94,6 +94,35 @@ async fn test_mode() {
 }
 
 #[tokio::test]
+async fn test_mode_multi_partition() {
+    let mut execution = utils::TestExecution::new()
+        .await
+        .unwrap()
+        .with_setup("SET datafusion.execution.target_partitions = 10;")
+        .await
+        .with_setup(TEST_TABLE)
+        .await;
+
+    let actual = execution
+        .run_and_format(
+            "SELECT int64_col, MODE(utf8_col) AS mode_utf8, MODE(float64_col) AS mode_float64 \
+             FROM test_table GROUP BY int64_col ORDER BY int64_col",
+        )
+        .await;
+
+    insta::assert_yaml_snapshot!(actual, @r###"
+          - +-----------+-----------+--------------+
+          - "| int64_col | mode_utf8 | mode_float64 |"
+          - +-----------+-----------+--------------+
+          - "| 1         | apple     | 1.0          |"
+          - "| 2         | apple     | 2.0          |"
+          - "| 3         | apple     | 3.0          |"
+          - "|           |           |              |"
+          - +-----------+-----------+--------------+
+    "###);
+}
+
+#[tokio::test]
 async fn test_mode_time64() {
     let mut execution = TestExecution::new()
         .await
