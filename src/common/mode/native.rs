@@ -224,6 +224,15 @@ mod tests {
     use datafusion::logical_expr::Accumulator;
     use std::sync;
 
+    fn merge_from(dest: &mut impl Accumulator, src: &mut impl Accumulator) -> error::Result<()> {
+        let arrays = src
+            .state()?
+            .iter()
+            .map(|value| value.to_array())
+            .collect::<error::Result<Vec<_>>>()?;
+        dest.merge_batch(&arrays)
+    }
+
     #[test]
     fn test_mode_accumulator_single_mode_int64() -> error::Result<()> {
         let mut acc = PrimitiveModeAccumulator::<arrow::datatypes::Int64Type>::new(
@@ -301,6 +310,35 @@ mod tests {
             result,
             scalar::ScalarValue::new_primitive::<arrow::datatypes::Int64Type>(
                 None,
+                &arrow::datatypes::DataType::Int64
+            )?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_mode_accumulator_merge_overlapping_keys_int64() -> error::Result<()> {
+        let mut left = PrimitiveModeAccumulator::<arrow::datatypes::Int64Type>::new(
+            &arrow::datatypes::DataType::Int64,
+        );
+        let left_values: arrow::array::ArrayRef =
+            sync::Arc::new(arrow::array::Int64Array::from(vec![2, 2, 2]));
+        left.update_batch(&[left_values])?;
+
+        let mut right = PrimitiveModeAccumulator::<arrow::datatypes::Int64Type>::new(
+            &arrow::datatypes::DataType::Int64,
+        );
+        // Right-only or replace-instead-of-add both pick 1. Summed counts pick 2.
+        let right_values: arrow::array::ArrayRef =
+            sync::Arc::new(arrow::array::Int64Array::from(vec![1, 1, 1, 1, 2, 2]));
+        right.update_batch(&[right_values])?;
+
+        merge_from(&mut right, &mut left)?;
+        let result = right.evaluate()?;
+        assert_eq!(
+            result,
+            scalar::ScalarValue::new_primitive::<arrow::datatypes::Int64Type>(
+                Some(2),
                 &arrow::datatypes::DataType::Int64
             )?
         );
@@ -391,6 +429,36 @@ mod tests {
             result,
             scalar::ScalarValue::new_primitive::<arrow::datatypes::Float64Type>(
                 None,
+                &arrow::datatypes::DataType::Float64
+            )?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_mode_accumulator_merge_overlapping_keys_float64() -> error::Result<()> {
+        let mut left = FloatModeAccumulator::<arrow::datatypes::Float64Type>::new(
+            &arrow::datatypes::DataType::Float64,
+        );
+        let left_values: arrow::array::ArrayRef =
+            sync::Arc::new(arrow::array::Float64Array::from(vec![2.0, 2.0, 2.0]));
+        left.update_batch(&[left_values])?;
+
+        let mut right = FloatModeAccumulator::<arrow::datatypes::Float64Type>::new(
+            &arrow::datatypes::DataType::Float64,
+        );
+        let right_values: arrow::array::ArrayRef =
+            sync::Arc::new(arrow::array::Float64Array::from(vec![
+                1.0, 1.0, 1.0, 1.0, 2.0, 2.0,
+            ]));
+        right.update_batch(&[right_values])?;
+
+        merge_from(&mut right, &mut left)?;
+        let result = right.evaluate()?;
+        assert_eq!(
+            result,
+            scalar::ScalarValue::new_primitive::<arrow::datatypes::Float64Type>(
+                Some(2.0),
                 &arrow::datatypes::DataType::Float64
             )?
         );

@@ -124,6 +124,15 @@ mod tests {
     use datafusion::logical_expr::Accumulator;
     use std::sync;
 
+    fn merge_from(dest: &mut impl Accumulator, src: &mut impl Accumulator) -> error::Result<()> {
+        let arrays = src
+            .state()?
+            .iter()
+            .map(|value| value.to_array())
+            .collect::<error::Result<Vec<_>>>()?;
+        dest.merge_batch(&arrays)
+    }
+
     #[test]
     fn test_mode_accumulator_single_mode_utf8() -> error::Result<()> {
         let mut acc = BytesModeAccumulator::new(&arrow::datatypes::DataType::Utf8);
@@ -281,6 +290,39 @@ mod tests {
         assert_eq!(
             result,
             scalar::ScalarValue::Utf8View(Some("apple".to_string()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_mode_accumulator_merge_overlapping_keys_utf8() -> error::Result<()> {
+        let mut left = BytesModeAccumulator::new(&arrow::datatypes::DataType::Utf8);
+        let left_values: arrow::array::ArrayRef =
+            sync::Arc::new(arrow::array::StringArray::from(vec![
+                Some("banana"),
+                Some("banana"),
+                Some("banana"),
+            ]));
+        left.update_batch(&[left_values])?;
+
+        let mut right = BytesModeAccumulator::new(&arrow::datatypes::DataType::Utf8);
+        // Right-only or replace-instead-of-add both pick apple. Summed counts pick banana.
+        let right_values: arrow::array::ArrayRef =
+            sync::Arc::new(arrow::array::StringArray::from(vec![
+                Some("apple"),
+                Some("apple"),
+                Some("apple"),
+                Some("apple"),
+                Some("banana"),
+                Some("banana"),
+            ]));
+        right.update_batch(&[right_values])?;
+
+        merge_from(&mut right, &mut left)?;
+        let result = right.evaluate()?;
+        assert_eq!(
+            result,
+            scalar::ScalarValue::Utf8(Some("banana".to_string()))
         );
         Ok(())
     }
