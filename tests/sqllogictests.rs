@@ -23,6 +23,9 @@
 //! ```sh
 //! COMPLETE=1 cargo test --test sqllogictests
 //! ```
+//!
+//! `COMPLETE` must be a truthy value (`1`, `true`, `yes`, or `on`).
+//! `COMPLETE=0` runs the tests without rewriting files.
 
 use std::path::{Path, PathBuf};
 
@@ -31,6 +34,21 @@ use datafusion_extra_functions::register_all_extra_functions;
 use datafusion_sqllogictest::{DataFusion, df_value_validator, value_normalizer};
 use indicatif::ProgressBar;
 use sqllogictest::strict_column_validator;
+
+/// Matches DataFusion's sqllogictest env handling: only `1` / `true` / `yes` /
+/// `on` (case-insensitive, surrounding whitespace ignored) enable complete mode.
+fn is_env_truthy(name: &str) -> bool {
+    std::env::var_os(name)
+        .and_then(|value| value.into_string().ok())
+        .is_some_and(|value| is_truthy(&value))
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
 
 fn context_with_extra_functions() -> SessionContext {
     let mut ctx = SessionContext::new();
@@ -56,7 +74,7 @@ fn test_files() -> Vec<PathBuf> {
 
 #[tokio::test]
 async fn sqllogictests() -> Result<(), String> {
-    let complete = std::env::var_os("COMPLETE").is_some();
+    let complete = is_env_truthy("COMPLETE");
     let mut failures = Vec::new();
 
     for path in test_files() {
@@ -97,5 +115,24 @@ async fn sqllogictests() -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("sqllogictest failures:\n{}", failures.join("\n")))
+    }
+}
+
+#[cfg(test)]
+mod truthy_env {
+    use super::is_truthy;
+
+    #[test]
+    fn accepts_truthy_values() {
+        for value in ["1", "true", "TRUE", " yes ", "On"] {
+            assert!(is_truthy(value), "{value}");
+        }
+    }
+
+    #[test]
+    fn rejects_falsy_values() {
+        for value in ["", "0", "false", "no", "off", "COMPLETE"] {
+            assert!(!is_truthy(value), "{value}");
+        }
     }
 }
