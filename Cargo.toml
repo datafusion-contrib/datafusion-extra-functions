@@ -63,6 +63,10 @@ version = "55.0"
 name = "mode"
 harness = false
 
+[[bench]]
+name = "max_by"
+harness = false
+
 [lints.clippy]
 dbg_macro = "deny"
 print_stdout = "deny"

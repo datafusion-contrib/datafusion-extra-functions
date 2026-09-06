@@ -60,6 +60,63 @@ SELECT max_by(x, y) FROM (SELECT * FROM (VALUES (1, 10)) WHERE 1=0) AS tab(x, y)
 ----
 NULL
 
+# NULL keys do not participate. In particular, an all-NULL key set has no
+# associated value.
+query IT
+SELECT max_by(v, k), arrow_typeof(max_by(v, k))
+FROM VALUES
+  (CAST(1 AS SMALLINT), CAST(NULL AS INT)),
+  (CAST(2 AS SMALLINT), CAST(NULL AS INT)) AS tab(v, k)
+----
+NULL Int16
+
+# A NULL value is retained when it belongs to the maximum non-NULL key.
+query I
+SELECT max_by(v, k)
+FROM VALUES (1, 1), (CAST(NULL AS BIGINT), 9), (3, 2) AS tab(v, k)
+----
+NULL
+
+# Exercise grouped partial/final aggregation, including an all-NULL-key group
+# and a NULL winning value.
+statement ok
+SET datafusion.execution.target_partitions = 4
+
+query II rowsort
+SELECT g, max_by(v, k)
+FROM (
+  SELECT * FROM VALUES (1, 10, 1), (2, 40, CAST(NULL AS INT)), (3, 50, 1) AS a(g, v, k)
+  UNION ALL
+  SELECT * FROM VALUES (1, 30, 3), (2, 60, CAST(NULL AS INT)), (3, CAST(NULL AS BIGINT), 9) AS b(g, v, k)
+) AS tab
+GROUP BY g
+ORDER BY g
+----
+1 30
+2 NULL
+3 NULL
+
+query IT rowsort
+SELECT g, max_by(v, k) FILTER (WHERE keep)
+FROM VALUES
+  (1, 'first', 'alpha', true),
+  (1, 'filtered', 'zulu', false),
+  (1, 'winner', 'delta', true),
+  (2, 'ignored', CAST(NULL AS VARCHAR), true) AS tab(g, v, k, keep)
+GROUP BY g
+ORDER BY g
+----
+1 winner
+2 NULL
+
+# Explicit ordering retains the previous last_value-based behavior instead of
+# using the native fast path.
+query I
+SELECT max_by(v, k ORDER BY t)
+FROM VALUES (1, 100, 1), (2, 1, 2) AS tab(v, k, t)
+----
+2
+
 query I
 SELECT min_by(x, y) FROM (SELECT * FROM (VALUES (1, 10)) WHERE 1=0) AS tab(x, y)
 ----
