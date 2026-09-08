@@ -15,7 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::common;
+mod bytes;
+mod native;
+
+pub use bytes::BytesModeAccumulator;
+pub use native::FloatModeAccumulator;
+pub use native::PrimitiveModeAccumulator;
 
 use datafusion::arrow::datatypes::{
     DataType, Date32Type, Date64Type, Field, Float16Type, Float32Type, Float64Type, Int8Type,
@@ -109,7 +114,7 @@ impl logical_expr::AggregateUDFImpl for ModeFunction {
             T: arrow::array::ArrowPrimitiveType + Send + fmt::Debug,
             T::Native: Eq + hash::Hash + Clone + PartialOrd + fmt::Debug,
         {
-            Box::new(common::mode::PrimitiveModeAccumulator::<T>::new(data_type))
+            Box::new(PrimitiveModeAccumulator::<T>::new(data_type))
         }
 
         fn float<T>(data_type: &DataType) -> Box<dyn logical_expr::Accumulator>
@@ -117,7 +122,7 @@ impl logical_expr::AggregateUDFImpl for ModeFunction {
             T: arrow::array::ArrowPrimitiveType + Send + fmt::Debug,
             T::Native: PartialOrd + fmt::Debug + Clone,
         {
-            Box::new(common::mode::FloatModeAccumulator::<T>::new(data_type))
+            Box::new(FloatModeAccumulator::<T>::new(data_type))
         }
 
         let data_type = &acc_args.exprs[0].data_type(acc_args.schema)?;
@@ -157,9 +162,7 @@ impl logical_expr::AggregateUDFImpl for ModeFunction {
             DataType::Float32 => float::<Float32Type>(data_type),
             DataType::Float64 => float::<Float64Type>(data_type),
 
-            DataType::Utf8 | DataType::Utf8View => {
-                Box::new(common::mode::BytesModeAccumulator::new(data_type))
-            }
+            DataType::Utf8 | DataType::Utf8View => Box::new(BytesModeAccumulator::new(data_type)),
             _ => {
                 return df_common::not_impl_err!(
                     "Unsupported data type: {data_type:?} for mode function"
@@ -167,4 +170,28 @@ impl logical_expr::AggregateUDFImpl for ModeFunction {
             }
         })
     }
+}
+
+/// Unwraps the two list-typed state columns (`values`, `frequencies`) row by
+/// row and passes each row's inner arrays to `f`.
+fn for_each_state_row(
+    states: &[arrow::array::ArrayRef],
+    mut f: impl FnMut(&arrow::array::ArrayRef, &arrow::array::Int64Array) -> error::Result<()>,
+) -> error::Result<()> {
+    if states.is_empty() {
+        return Ok(());
+    }
+
+    let values = df_common::cast::as_list_array(&states[0])?;
+    let counts = df_common::cast::as_list_array(&states[1])?;
+
+    for (values, counts) in values.iter().zip(counts.iter()) {
+        if let (Some(values), Some(counts)) = (values, counts) {
+            let counts =
+                df_common::cast::as_primitive_array::<arrow::datatypes::Int64Type>(&counts)?;
+            f(&values, counts)?;
+        }
+    }
+
+    Ok(())
 }

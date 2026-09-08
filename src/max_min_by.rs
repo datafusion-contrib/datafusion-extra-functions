@@ -1,7 +1,14 @@
-use datafusion::logical_expr::AggregateUDFImpl;
+mod accumulator;
+
+use accumulator::{MaxByAccumulator, supports_groups_key, try_groups_accumulator};
+use datafusion::arrow::datatypes::{Field, FieldRef};
+use datafusion::logical_expr::function::{AccumulatorArgs, StateFieldsArgs};
+use datafusion::logical_expr::utils::format_state_name;
+use datafusion::logical_expr::{AggregateUDFImpl, GroupsAccumulator};
 use datafusion::{arrow, common, error, functions_aggregate, logical_expr};
 use std::fmt;
 use std::ops::Deref;
+use std::sync::Arc;
 
 make_udaf_expr_and_func!(
     MaxByFunction,
@@ -26,6 +33,7 @@ impl fmt::Debug for MaxByFunction {
             .finish()
     }
 }
+
 impl Default for MaxByFunction {
     fn default() -> Self {
         Self::new(true)
@@ -44,6 +52,12 @@ impl MaxByFunction {
 fn get_min_max_by_result_type(
     input_types: &[arrow::datatypes::DataType],
 ) -> error::Result<Vec<arrow::datatypes::DataType>> {
+    if input_types.len() != 2 {
+        return common::exec_err!(
+            "max_by/min_by requires exactly two arguments, got {}",
+            input_types.len()
+        );
+    }
     match &input_types[0] {
         arrow::datatypes::DataType::Dictionary(_, dict_value_type) => {
             // x add checker, if the value type is complex data type
@@ -74,9 +88,17 @@ impl logical_expr::AggregateUDFImpl for MaxByFunction {
 
     fn accumulator(
         &self,
-        _acc_args: logical_expr::function::AccumulatorArgs,
+        acc_args: logical_expr::function::AccumulatorArgs,
     ) -> error::Result<Box<dyn logical_expr::Accumulator>> {
-        common::exec_err!("should not reach here")
+        if !acc_args.order_bys.is_empty() || acc_args.ignore_nulls {
+            return common::internal_err!(
+                "native max_by does not support ORDER BY or IGNORE NULLS"
+            );
+        }
+        Ok(Box::new(MaxByAccumulator::try_new(
+            acc_args.return_field.data_type(),
+            acc_args.expr_fields[1].data_type(),
+        )?))
     }
 
     fn coerce_types(
@@ -88,28 +110,80 @@ impl logical_expr::AggregateUDFImpl for MaxByFunction {
 
     fn simplify(&self) -> Option<logical_expr::function::AggregateFunctionSimplification> {
         let null_first = self.null_first;
-        let simplify = move |mut aggr_func: logical_expr::expr::AggregateFunction,
-                             _: &logical_expr::simplify::SimplifyContext| {
-            let mut order_by = aggr_func.params.order_by;
-            let (second_arg, first_arg) = (
-                aggr_func.params.args.remove(1),
-                aggr_func.params.args.remove(0),
-            );
-            let sort = logical_expr::expr::Sort::new(second_arg, true, null_first);
-            order_by.push(sort);
-            let func = logical_expr::expr::AggregateFunction::new_udf(
-                functions_aggregate::first_last::last_value_udaf(),
-                vec![first_arg],
-                aggr_func.params.distinct,
-                aggr_func.params.filter,
-                order_by,
-                aggr_func.params.null_treatment,
-            );
-            let func = logical_expr::expr::Expr::AggregateFunction(func);
-            Ok(func)
-        };
-        Some(Box::new(simplify))
+        Some(Box::new(move |aggr_func, _| {
+            if null_first
+                && aggr_func.params.order_by.is_empty()
+                && aggr_func.params.null_treatment.is_none()
+            {
+                return Ok(logical_expr::Expr::AggregateFunction(aggr_func));
+            }
+            rewrite_to_last_value(aggr_func, true, null_first)
+        }))
     }
+
+    fn state_fields(&self, args: StateFieldsArgs) -> error::Result<Vec<FieldRef>> {
+        Ok(vec![
+            Arc::new(Field::new(
+                format_state_name(args.name, "value"),
+                args.return_field.data_type().clone(),
+                true,
+            )),
+            Arc::new(Field::new(
+                format_state_name(args.name, "key"),
+                args.input_fields[1].data_type().clone(),
+                true,
+            )),
+        ])
+    }
+
+    fn groups_accumulator_supported(&self, args: AccumulatorArgs) -> bool {
+        !args.is_distinct
+            && !args.ignore_nulls
+            && args.order_bys.is_empty()
+            && args.expr_fields.len() == 2
+            && supports_groups_key(args.expr_fields[1].data_type())
+    }
+
+    fn create_groups_accumulator(
+        &self,
+        args: AccumulatorArgs,
+    ) -> error::Result<Box<dyn GroupsAccumulator>> {
+        match try_groups_accumulator(
+            args.return_field.data_type(),
+            args.expr_fields[1].data_type(),
+        ) {
+            Some(accumulator) => Ok(accumulator),
+            None => common::internal_err!(
+                "unsupported max_by key type {}",
+                args.expr_fields[1].data_type()
+            ),
+        }
+    }
+}
+
+fn rewrite_to_last_value(
+    mut aggr_func: logical_expr::expr::AggregateFunction,
+    ascending: bool,
+    null_first: bool,
+) -> error::Result<logical_expr::Expr> {
+    let mut order_by = aggr_func.params.order_by;
+    let (second_arg, first_arg) = (
+        aggr_func.params.args.remove(1),
+        aggr_func.params.args.remove(0),
+    );
+    order_by.push(logical_expr::expr::Sort::new(
+        second_arg, ascending, null_first,
+    ));
+    Ok(logical_expr::Expr::AggregateFunction(
+        logical_expr::expr::AggregateFunction::new_udf(
+            functions_aggregate::first_last::last_value_udaf(),
+            vec![first_arg],
+            aggr_func.params.distinct,
+            aggr_func.params.filter,
+            order_by,
+            aggr_func.params.null_treatment,
+        ),
+    ))
 }
 
 make_udaf_expr_and_func!(
@@ -183,28 +257,9 @@ impl logical_expr::AggregateUDFImpl for MinByFunction {
 
     fn simplify(&self) -> Option<logical_expr::function::AggregateFunctionSimplification> {
         let null_first = self.null_first;
-        let simplify = move |mut aggr_func: logical_expr::expr::AggregateFunction,
-                             _: &logical_expr::simplify::SimplifyContext| {
-            let mut order_by = aggr_func.params.order_by;
-            let (second_arg, first_arg) = (
-                aggr_func.params.args.remove(1),
-                aggr_func.params.args.remove(0),
-            );
-
-            let sort = logical_expr::expr::Sort::new(second_arg, false, null_first);
-            order_by.push(sort); // false for ascending sort
-            let func = logical_expr::expr::AggregateFunction::new_udf(
-                functions_aggregate::first_last::last_value_udaf(),
-                vec![first_arg],
-                aggr_func.params.distinct,
-                aggr_func.params.filter,
-                order_by,
-                aggr_func.params.null_treatment,
-            );
-            let func = logical_expr::expr::Expr::AggregateFunction(func);
-            Ok(func)
-        };
-        Some(Box::new(simplify))
+        Some(Box::new(move |aggr_func, _| {
+            rewrite_to_last_value(aggr_func, false, null_first)
+        }))
     }
 }
 

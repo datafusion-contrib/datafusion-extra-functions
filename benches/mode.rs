@@ -18,7 +18,7 @@
 use arrow::util::bench_util::{create_primitive_array, create_string_array};
 use criterion::{Criterion, criterion_group, criterion_main};
 use datafusion::{arrow, logical_expr::Accumulator};
-use datafusion_extra_functions::common::mode::{BytesModeAccumulator, PrimitiveModeAccumulator};
+use datafusion_extra_functions::mode::{BytesModeAccumulator, PrimitiveModeAccumulator};
 use std::{hint, slice, sync};
 
 fn prepare_primitive_mode_accumulator() -> Box<dyn Accumulator> {
