@@ -19,12 +19,10 @@
 
 use datafusion::{common as df_common, error, execution, logical_expr};
 use log::debug;
-use mode::mode_udaf;
 use std::sync;
 
 #[macro_use]
 pub mod macros;
-pub mod common;
 pub mod kurtosis;
 pub mod kurtosis_pop;
 pub mod max_min_by;
@@ -41,7 +39,7 @@ pub mod expr_extra_fn {
 
 pub fn all_extra_aggregate_functions() -> Vec<sync::Arc<logical_expr::AggregateUDF>> {
     vec![
-        mode_udaf(),
+        mode::mode_udaf(),
         max_min_by::max_by_udaf(),
         max_min_by::min_by_udaf(),
         kurtosis::kurtosis_udaf(),
