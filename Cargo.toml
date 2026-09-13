@@ -15,13 +15,26 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "datafusion-extra-functions"
+[workspace]
+members = ["python"]
+resolver = "2"
+
+[workspace.package]
 version = "0.5.4"
 edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/datafusion-contrib/datafusion-extra-functions/"
+
+[profile.release]
+strip = true
+
+[package]
+name = "datafusion-extra-functions"
+version.workspace = true
+edition.workspace = true
 description = "Extra Functions for DataFusion"
 readme = "README.md"
-license = "Apache-2.0"
+license.workspace = true
 keywords = [
     "aggregations",
     "datafusion",
@@ -29,7 +42,7 @@ keywords = [
 ]
 documentation = "https://docs.rs/datafusion-extra-functions/"
 homepage = "https://github.com/datafusion-contrib/datafusion-extra-functions/"
-repository = "https://github.com/datafusion-contrib/datafusion-extra-functions/"
+repository.workspace = true
 
 [dependencies]
 log = "0.4"
