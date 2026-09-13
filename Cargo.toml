@@ -16,7 +16,7 @@
 # under the License.
 
 [workspace]
-members = []
+members = ["python"]
 resolver = "2"
 
 [workspace.package]
