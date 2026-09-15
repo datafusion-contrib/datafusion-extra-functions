@@ -18,9 +18,7 @@
 name: Python release
 
 on:
-  push:
-    tags:
-      - '**'
+  workflow_call: {}
   workflow_dispatch: {}
 
 permissions:
@@ -49,10 +47,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set release version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: python -c "import os,pathlib; p=pathlib.Path('Cargo.toml'); v=os.environ['GITHUB_REF_NAME'].removeprefix('v'); p.write_text('\\n'.join('version = \\\"'+v+'\\\"' if l.startswith('version = ') else l for l in p.read_text().splitlines())+'\\n')"
-
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -70,10 +64,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Set release version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: python -c "import os,pathlib; p=pathlib.Path('Cargo.toml'); v=os.environ['GITHUB_REF_NAME'].removeprefix('v'); p.write_text('\\n'.join('version = \\\"'+v+'\\\"' if l.startswith('version = ') else l for l in p.read_text().splitlines())+'\\n')"
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
