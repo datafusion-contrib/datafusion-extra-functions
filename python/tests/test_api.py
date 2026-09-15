@@ -15,35 +15,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
-fail_fast: true
+import datafusion_extra_functions as extra
+import pytest
 
-repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v6.0.0
-  hooks:
-  - id: check-yaml
-  - id: check-toml
-  - id: end-of-file-fixer
-  - id: trailing-whitespace
-  - id: check-added-large-files
 
-- repo: local
-  hooks:
-  - id: format
-    name: Format
-    entry: cargo fmt --all
-    types: [rust]
-    language: system
-    pass_filenames: false
-  - id: clippy
-    name: Clippy
-    entry: cargo clippy -p datafusion-extra-functions --all-targets --all-features -- -D warnings
-    types: [rust]
-    language: system
-    pass_filenames: false
-  - id: test
-    name: Test
-    entry: cargo test
-    types: [rust]
-    language: system
-    pass_filenames: false
+def test_list_functions() -> None:
+    names = extra.list_functions()
+    assert {
+        "mode",
+        "skewness",
+        "kurtosis",
+        "kurtosis_pop",
+        "max_by",
+        "min_by",
+    } <= set(names)
+
+
+def test_udaf_by_name_unknown() -> None:
+    with pytest.raises(KeyError, match="no_such_function"):
+        extra.udaf_by_name("no_such_function")
+
+
+def test_repr_and_name() -> None:
+    fn = extra.udaf_by_name("mode")
+    assert fn.name() == "mode"
+    assert repr(fn) == "ExtraAggregateUDF(mode)"

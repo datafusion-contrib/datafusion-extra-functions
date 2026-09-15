@@ -23,10 +23,21 @@ perf.data.old
 # IDE and editor directories
 .vscode
 .idea/
-.pytest_cache/
 
-# Python virtual environments
-venv/*
+# Python virtual environments, packaging, and caches
+venv/
+.venv/
+dist/
+wheels/
+*.egg-info/
+*.whl
+*.so
+*.pyd
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # macOS
 .DS_Store
@@ -34,9 +45,9 @@ venv/*
 # Docker volumes used for caching
 .docker
 
-# Rust build output
+# Rust build output (root is a library crate; python/Cargo.lock is committed)
 target
-Cargo.lock
+/Cargo.lock
 
 # Backup files
 *.orig
