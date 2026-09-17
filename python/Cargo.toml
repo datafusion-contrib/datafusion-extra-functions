@@ -29,7 +29,7 @@ name = "datafusion_extra_functions"
 crate-type = ["cdylib"]
 
 [dependencies]
-datafusion-expr = "=55.0.0"
+datafusion-expr = "=55.1.0"
 datafusion-extra-functions = { path = ".." }
 datafusion-ffi = { version = "=55.0.0", default-features = false }
 pyo3 = { version = "0.29", features = [
