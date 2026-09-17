@@ -10,3 +10,13 @@ updates:
     directory: /
     schedule:
       interval: daily
+
+  - package-ecosystem: cargo
+    directory: /python
+    schedule:
+      interval: daily
+
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: daily

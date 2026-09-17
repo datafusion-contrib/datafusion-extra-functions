@@ -13,6 +13,12 @@ Version `0.5.4` supports DataFusion `55.0` and Rust edition 2024.
 cargo add datafusion-extra-functions
 ```
 
+From Python (datafusion-python 55), install the FFI wheel and register aggregates via the PyCapsule protocol. See [`python/README.md`](python/README.md).
+
+```sh
+pip install datafusion-extra-functions
+```
+
 Register all functions with your session context:
 
 ```rust
@@ -43,4 +49,12 @@ SELECT kurtosis(measurement) FROM readings;
 
 ```sh
 cargo test
+```
+
+Python bindings (from `python/`):
+
+```sh
+pip install maturin pytest
+maturin develop --release
+pytest
 ```
