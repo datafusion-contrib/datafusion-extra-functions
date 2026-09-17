@@ -93,7 +93,7 @@ jobs:
       # DataFusion FFI currently fails clippy with its own non-exhaustive match.
       # Root crate lint still runs in main Rust job.
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
