@@ -5,7 +5,7 @@
 
 Extra aggregate functions for [Apache DataFusion](https://datafusion.apache.org/). This is not an official Apache Software Foundation release.
 
-Version `0.5.4` supports DataFusion `55.0` and Rust edition 2024.
+Version `0.5.5` supports DataFusion `55.0` and Rust edition 2024.
 
 ## Installation
 
