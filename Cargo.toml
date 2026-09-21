@@ -67,7 +67,7 @@ default-features = false
 features = [
     "test_utils",
 ]
-version = "59.3"
+version = "60.0"
 
 [dev-dependencies.datafusion]
 default-features = false
