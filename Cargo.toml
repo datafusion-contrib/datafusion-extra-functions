@@ -60,7 +60,7 @@ datafusion-sqllogictest = "=55.2.0"
 indicatif = "0.18"
 rand = "0.10"
 sqllogictest = "0.29"
-tokio = "1.53"
+tokio = "1.54"
 
 [dev-dependencies.arrow]
 default-features = false
