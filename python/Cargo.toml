@@ -33,7 +33,7 @@ crate-type = [
 [dependencies]
 datafusion-expr = "=55.3.0"
 datafusion-extra-functions = { path = ".." }
-datafusion-ffi = { version = "=55.2.0", default-features = false }
+datafusion-ffi = { version = "=55.3.0", default-features = false }
 pyo3 = { version = "0.30", features = [
     "abi3",
     "abi3-py310",
