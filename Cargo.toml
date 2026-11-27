@@ -56,7 +56,7 @@ version = "=55.3.0"
 
 [dev-dependencies]
 criterion = "0.8"
-datafusion-sqllogictest = "=55.3.0"
+datafusion-sqllogictest = "=56.0.0"
 indicatif = "0.18"
 rand = "0.10"
 sqllogictest = "0.29"
